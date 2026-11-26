@@ -10,18 +10,18 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// Codex Desktop injects Companion Page context as agent function_call_output
-// items without a corresponding model call. Preserve their text as user context
-// before ordinary tool-output validation, including when replaying tool history.
+// Codex injects external context as agent function_call_output items without a
+// corresponding model call. Preserve known context as user text before ordinary
+// tool-output validation, including when replaying tool history.
 // Unrecognized outputs and items carrying a call identity remain untouched.
-func normalizeCodexPageContext(body []byte) ([]byte, bool) {
+func normalizeCodexExternalContext(body []byte) ([]byte, bool) {
 	input := gjson.GetBytes(body, "input")
 	if !input.IsArray() {
 		return body, false
 	}
 	hasContext := false
 	input.ForEach(func(_, item gjson.Result) bool {
-		hasContext = isCodexPageContext(item)
+		hasContext = isCodexExternalContext(item)
 		return !hasContext
 	})
 	if !hasContext || !hasUniqueJSONMembers(body) {
@@ -30,7 +30,7 @@ func normalizeCodexPageContext(body []byte) ([]byte, bool) {
 	var items []json.RawMessage
 	changed := false
 	input.ForEach(func(_, item gjson.Result) bool {
-		if !isCodexPageContext(item) {
+		if !isCodexExternalContext(item) {
 			items = append(items, json.RawMessage(item.Raw))
 			return true
 		}
@@ -61,7 +61,7 @@ func normalizeCodexPageContext(body []byte) ([]byte, bool) {
 	return normalized, true
 }
 
-func isCodexPageContext(item gjson.Result) bool {
+func isCodexExternalContext(item gjson.Result) bool {
 	if item.Get("type").String() != "function_call_output" || item.Get("namespace").String() != "agent" {
 		return false
 	}
@@ -75,9 +75,23 @@ func isCodexPageContext(item gjson.Result) bool {
 	if output.Type != gjson.String {
 		return false
 	}
-	name := item.Get("name").String()
+	name, text := item.Get("name").String(), output.String()
+	switch name {
+	case "browser_tabs", "browser_info", "terminal_info", "goal_objective", "untrusted_context", "ide_context":
+		return strings.TrimSpace(text) != ""
+	case "untrusted_content":
+		// Codex's fallback for unnamed context can carry an empty string.
+		return true
+	case "proposed_plan":
+		// A plan chunk can consist entirely of whitespace.
+		return text != ""
+	}
+	return validCodexPageContext(name, text)
+}
+
+func validCodexPageContext(name, output string) bool {
 	if name == "codex_apps_open_page" {
-		return validCodexPageSnapshot(output.String())
+		return validCodexPageSnapshot(output)
 	}
 	const prefix = "codex_apps_selected_page_part_"
 	if !strings.HasPrefix(name, prefix) {
@@ -95,7 +109,7 @@ func isCodexPageContext(item gjson.Result) bool {
 	}
 	// Snapshot parts may split a JSON document, so validate the matching envelope
 	// rather than requiring each part to be independently valid JSON.
-	header, snapshot, hasNewline := strings.Cut(output.String(), "\n")
+	header, snapshot, hasNewline := strings.Cut(output, "\n")
 	wantHeader := "Companion Page snapshot part " + part + " of " + total + ":"
 	return hasNewline && strings.TrimSuffix(header, "\r") == wantHeader && strings.TrimSpace(snapshot) != "" &&
 		(totalNumber > 1 || validCodexPageSnapshot(snapshot))

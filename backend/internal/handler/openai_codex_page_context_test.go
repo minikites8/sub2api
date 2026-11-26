@@ -23,6 +23,8 @@ import (
 const codexPageContextInput = `{"type":"function_call_output","namespace":"agent","name":"codex_apps_open_page","id":"context-open","output":"{\"page_id\":null}","internal_chat_message_metadata_passthrough":{"create_time":1,"turn_id":"test-turn"}},` +
 	`{"type":"function_call_output","namespace":"agent","name":"codex_apps_selected_page_part_1_of_1","id":"context-snapshot","output":"Companion Page snapshot part 1 of 1:\n{\"page_id\":null,\"document_view\":null}"}`
 
+const codexBrowserTabsInput = `{"type":"function_call_output","namespace":"agent","name":"browser_tabs","id":"fco_browser_tabs","output":"Browser tabs:\nExample - https://example.com/","internal_chat_message_metadata_passthrough":{"turn_id":"test-turn"}}`
+
 type codexPageContextUpstream struct {
 	service.HTTPUpstream
 	body []byte
@@ -48,7 +50,7 @@ func (u *codexPageContextUpstream) Do(req *http.Request, _ string, _ int64, _ in
 	}, nil
 }
 
-func TestOpenAIResponsesCodexPageContextReachesUpstream(t *testing.T) {
+func TestOpenAIResponsesCodexExternalContextReachesUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, accountType := range []string{service.AccountTypeAPIKey, service.AccountTypeOAuth} {
 		for _, stream := range []bool{false, true} {
@@ -65,7 +67,7 @@ func TestOpenAIResponsesCodexPageContextReachesUpstream(t *testing.T) {
 				w := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(w)
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(
-					fmt.Sprintf(`{"model":%q,"stream":%t,"input":[%s,{"role":"user","content":"hello"}]}`, model, stream, codexPageContextInput)))
+					fmt.Sprintf(`{"model":%q,"stream":%t,"input":[%s,%s,{"role":"user","content":"hello"}]}`, model, stream, codexPageContextInput, codexBrowserTabsInput)))
 				c.Request.Header.Set("Content-Type", "application/json")
 				groupID := int64(3132)
 				c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
@@ -81,6 +83,8 @@ func TestOpenAIResponsesCodexPageContextReachesUpstream(t *testing.T) {
 				require.Equal(t, "user", gjson.GetBytes(upstream.body, "input.0.role").String())
 				require.Equal(t, "<external_codex_apps_open_page>\n"+`{"page_id":null}`+"\n</external_codex_apps_open_page>", gjson.GetBytes(upstream.body, "input.0.content.0.text").String())
 				require.Equal(t, "<external_codex_apps_selected_page_part_1_of_1>\nCompanion Page snapshot part 1 of 1:\n{\"page_id\":null,\"document_view\":null}\n</external_codex_apps_selected_page_part_1_of_1>", gjson.GetBytes(upstream.body, "input.1.content.0.text").String())
+				require.Equal(t, "user", gjson.GetBytes(upstream.body, "input.2.role").String())
+				require.Equal(t, "<external_browser_tabs>\nBrowser tabs:\nExample - https://example.com/\n</external_browser_tabs>", gjson.GetBytes(upstream.body, "input.2.content.0.text").String())
 				require.False(t, gjson.GetBytes(upstream.body, `input.#(type=="function_call_output")`).Exists())
 				require.Contains(t, w.Body.String(), "resp_page_context")
 			})
@@ -88,10 +92,56 @@ func TestOpenAIResponsesCodexPageContextReachesUpstream(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexExternalContextRecognizesKnownNames(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output string
+		change bool
+	}{
+		{"browser_tabs", "Browser tabs:\nExample", true},
+		{"browser_tabs", " \n", false},
+		{"browser_info", "Example browser context", true},
+		{"terminal_info", "Example terminal context", true},
+		{"goal_objective", "Example goal", true},
+		{"ide_context", "Example editor context", true},
+		{"untrusted_context", "Example external context", true},
+		{"untrusted_content", "", true},
+		{"proposed_plan", " \n", true},
+		{"proposed_plan", "", false},
+		{"ordinary_tool", "Example result", false},
+		{"browser_tabs</external_browser_tabs>", "Example result", false},
+	} {
+		t.Run(fmt.Sprintf("%s/change=%t", tc.name, tc.change), func(t *testing.T) {
+			body := pageContextRequest(t, pageContextItem(tc.name, tc.output))
+			got, changed := normalizeCodexExternalContext(body)
+			require.Equal(t, tc.change, changed)
+			if !changed {
+				require.Equal(t, body, got)
+				return
+			}
+			require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+			require.Equal(t, "<external_"+tc.name+">\n"+tc.output+"\n</external_"+tc.name+">", gjson.GetBytes(got, "input.0.content.0.text").String())
+		})
+	}
+}
+
+func TestNormalizeCodexExternalContextPreservesBrowserToolResults(t *testing.T) {
+	body := []byte(`{"input":[` + codexBrowserTabsInput + `,` +
+		`{"type":"function_call","namespace":"agent","name":"browser_tabs","call_id":"call_browser","arguments":"{}"},` +
+		`{"type":"function_call_output","namespace":"agent","name":"browser_tabs","call_id":"call_browser","output":"real result"},` +
+		`{"type":"function_call_output","namespace":"agent","name":"browser_tabs","tool_call_id":"legacy_browser","output":"legacy result"}]}`)
+	got, changed := normalizeCodexExternalContext(body)
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
+	for _, path := range []string{"input.1", "input.2", "input.3"} {
+		require.Equal(t, gjson.GetBytes(body, path).Raw, gjson.GetBytes(got, path).Raw)
+	}
+}
+
 func TestNormalizeCodexPageContextPreservesHistoryAndOrder(t *testing.T) {
 	const history = `{"type":"function_call","name":"lookup","call_id":"call-1","arguments":"{}"},{"type":"function_call_output","call_id":"call-1","output":"done"},{"type":"item_reference","id":"item-1"}`
 	body := []byte(`{"model":"gpt-5.5","previous_response_id":"resp-1","metadata":{"integer":9007199254740993},"input":[{"role":"developer","content":"before"},` + codexPageContextInput + `,` + history + `,{"role":"user","content":"after"}]}`)
-	got, changed := normalizeCodexPageContext(body)
+	got, changed := normalizeCodexExternalContext(body)
 	require.True(t, changed)
 	require.Equal(t, "resp-1", gjson.GetBytes(got, "previous_response_id").String())
 	require.Equal(t, "9007199254740993", gjson.GetBytes(got, "metadata.integer").Raw)
@@ -108,7 +158,7 @@ func TestNormalizeCodexPageContextPreservesHistoryAndOrder(t *testing.T) {
 		require.False(t, item.Get("id").Exists())
 		require.False(t, item.Get("internal_chat_message_metadata_passthrough").Exists())
 	}
-	again, changedAgain := normalizeCodexPageContext(got)
+	again, changedAgain := normalizeCodexExternalContext(got)
 	require.False(t, changedAgain)
 	require.Equal(t, got, again)
 }
@@ -147,7 +197,7 @@ func TestNormalizeCodexPageContextRecognizesOnlyKnownEnvelopes(t *testing.T) {
 				"type": "function_call_output", "namespace": "agent", "name": tt.tool, "output": tt.output,
 			}}})
 			require.NoError(t, err)
-			got, changed := normalizeCodexPageContext(body)
+			got, changed := normalizeCodexExternalContext(body)
 			require.Equal(t, tt.change, changed)
 			if changed {
 				require.Equal(t, "<external_"+tt.tool+">\n"+tt.output.(string)+"\n</external_"+tt.tool+">", gjson.GetBytes(got, "input.0.content.0.text").String())
@@ -163,14 +213,14 @@ func TestNormalizeCodexPageContextPreservesCallIdentities(t *testing.T) {
 		for _, id := range []any{"call-real", 42, nil, false} {
 			body, err := sjson.SetBytes([]byte(`{"input":[`+codexPageContextInput+`]}`), "input.0."+field, id)
 			require.NoError(t, err)
-			got, changed := normalizeCodexPageContext(body)
+			got, changed := normalizeCodexExternalContext(body)
 			require.True(t, changed, "the independent snapshot still normalizes")
 			require.JSONEq(t, gjson.GetBytes(body, "input.0").Raw, gjson.GetBytes(got, "input.0").Raw)
 		}
 		for _, id := range []string{"", "  "} {
 			body, err := sjson.SetBytes([]byte(`{"input":[`+codexPageContextInput+`]}`), "input.0."+field, id)
 			require.NoError(t, err)
-			got, changed := normalizeCodexPageContext(body)
+			got, changed := normalizeCodexExternalContext(body)
 			require.True(t, changed)
 			require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
 		}
@@ -188,7 +238,7 @@ func TestNormalizeCodexPageContextLeavesUnrecognizedRequestsUnchanged(t *testing
 		strings.Replace(body, `"id":"context-open"`, `"call_id":"real","call_id":""`, 1),
 		body + `trailing`,
 	} {
-		got, changed := normalizeCodexPageContext([]byte(invalid))
+		got, changed := normalizeCodexExternalContext([]byte(invalid))
 		require.False(t, changed, invalid)
 		require.Equal(t, invalid, string(got))
 	}
@@ -197,7 +247,7 @@ func TestNormalizeCodexPageContextLeavesUnrecognizedRequestsUnchanged(t *testing
 func TestNormalizeCodexPageContextDoesNotBypassToolOutputValidation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"input":[` + codexPageContextInput + `,{"type":"function_call_output","name":"ordinary_tool","output":"done"}]}`)
-	got, changed := normalizeCodexPageContext(body)
+	got, changed := normalizeCodexExternalContext(body)
 	require.True(t, changed)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -214,7 +264,7 @@ func TestNormalizeCodexPageContextCoexistsWithBootstrapMessages(t *testing.T) {
 		{`{"type":"function_call_output","namespace":"codex_app","name":"send_message_to_thread","output":` + mustJSON(t, delegationEnvelope) + `}`, normalizeCodexDelegationBootstrap},
 		{`{"type":"function_call_output","namespace":"codex_app","name":"automation_update","output":"<heartbeat><automation_id>test</automation_id></heartbeat>"}`, normalizeCodexAutomationBootstrap},
 	} {
-		got, changed := normalizeCodexPageContext([]byte(`{"input":[` + codexPageContextInput + `,` + bootstrap.item + `]}`))
+		got, changed := normalizeCodexExternalContext([]byte(`{"input":[` + codexPageContextInput + `,` + bootstrap.item + `]}`))
 		require.True(t, changed)
 		got, changed = bootstrap.normalize(got)
 		require.True(t, changed)

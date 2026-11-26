@@ -1001,23 +1001,28 @@ func TestOpenAIResponses_RejectsUnownedHTTPContinuation(t *testing.T) {
 	require.Contains(t, w.Body.String(), "previous_response_id is not available for this user")
 }
 
-func TestOpenAIResponses_FunctionCallOutputHTTPGuidanceDoesNotSuggestPreviousResponseReuse(t *testing.T) {
+func TestOpenAIResponses_FunctionCallOutputHTTPGuidance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(
-		`{"model":"gpt-5.1","stream":false,"input":[{"type":"function_call_output","output":"{}"}]}`,
-	))
-	c.Request.Header.Set("Content-Type", "application/json")
+	for _, tc := range []struct {
+		name, input, message string
+	}{
+		{"missing call id", `{"type":"function_call_output","output":"{}"}`, "function_call_output requires call_id"},
+		{"missing context", `{"type":"function_call_output","call_id":"call_real","output":"{}"}`, "function_call_output requires item_reference ids matching each call_id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			body := []byte(`{"model":"gpt-5.1","input":[` + tc.input + `]}`)
+			h := &OpenAIGatewayHandler{}
+			require.False(t, h.validateFunctionCallOutputRequest(c, body, zap.NewNop()))
 
-	// This guard remains available for requests outside automatic recovery.
-	h := &OpenAIGatewayHandler{}
-	require.False(t, h.validateFunctionCallOutputRequest(c, []byte(`{"model":"gpt-5.1","input":[{"type":"function_call_output","output":"{}"}]}`), zap.NewNop()))
-
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), "Responses WebSocket v2")
-	require.NotContains(t, w.Body.String(), "reuse previous_response_id")
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), tc.message)
+			require.NotContains(t, w.Body.String(), "Responses WebSocket v2")
+			require.NotContains(t, w.Body.String(), "reuse previous_response_id")
+		})
+	}
 }
 
 func TestOpenAIResponsesWebSocket_SetsClientTransportWSWhenUpgradeValid(t *testing.T) {
